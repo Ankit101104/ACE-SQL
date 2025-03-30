@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <style>
+        :root {
+            --gradient-start: #4F46E5;
+            --gradient-end: #06B6D4;
+            --card-bg: rgba(255, 255, 255, 0.95);
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, var(--gradient-start), var(--gradient-end));
+            min-height: 100vh;
+            color: #1F2937;
+        }
+
+        .glass-card {
+            background: var(--card-bg);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .glass-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
+        }
+
+        .input-wrapper {
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+
+        .search-input {
+            width: 100%;
+            padding: 1rem 1.5rem;
+            border: 2px solid transparent;
+            border-radius: 12px;
+            background: white;
+            font-size: 1rem;
+            transition: all 0.3s;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+        }
+
+        .search-input:focus {
+            outline: none;
+            border-color: var(--gradient-start);
+            box-shadow: 0 4px 12px rgba(79, 70, 229, 0.1);
+        }
+
+        .generate-btn {
+            background: linear-gradient(135deg, var(--gradient-start), var(--gradient-end));
+            color: white;
+            padding: 0.75rem 2rem;
+            border-radius: 12px;
+            font-weight: 600;
+            transition: all 0.3s;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .generate-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
+        }
+
+        .code-block {
+            background: #1F2937;
+            color: #E5E7EB;
+            padding: 1.5rem;
+            border-radius: 12px;
+            font-family: 'Monaco', 'Consolas', monospace;
+            overflow-x: auto;
+            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+
+        .results-table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+        }
+
+        .results-table th {
+            background: #F3F4F6;
+            padding: 1rem;
+            font-weight: 600;
+            text-align: left;
+            border-bottom: 2px solid #E5E7EB;
+        }
+
+        .results-table td {
+            padding: 1rem;
+            border-bottom: 1px solid #E5E7EB;
+        }
+
+        .results-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .visualization-container {
+            background: white;
+            border-radius: 12px;
+            padding: 1rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+        }
+    </style>
+</head>
+<body class="py-12 px-4">
+    <div class="container mx-auto max-w-6xl">
+        <header class="text-center mb-12">
+            <h1 class="text-5xl font-bold text-white mb-4 tracking-tight">SQL Query Generator</h1>
+            <p class="text-xl text-white/90">Transform natural language into powerful SQL queries</p>
+        </header>
+
+        <div class="glass-card p-8 mb-8 rounded-2xl">
+            <div class="flex gap-4">
+                <div class="flex-1">
+                    <input type="text" id="queryInput" 
+                           class="search-input"
+                           placeholder="Ask a question (e.g., 'Show me total sales by region')">
+                </div>
+                <button onclick="generateQuery()" 
+                        class="generate-btn">
+                    Generate Query
+                </button>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
+            <div class="glass-card p-8 rounded-2xl">
+                <h2 class="text-2xl font-semibold mb-4 bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-cyan-600">Generated SQL</h2>
+                <pre id="sqlQuery" class="code-block text-sm"></pre>
+            </div>
+
+            <div class="glass-card p-8 rounded-2xl">
+                <h2 class="text-2xl font-semibold mb-4 bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-cyan-600">Query Explanation</h2>
+                <p id="queryExplanation" class="text-gray-700 leading-relaxed"></p>
+            </div>
+        </div>
+
+        <div class="glass-card p-8 rounded-2xl">
+            <h2 class="text-2xl font-semibold mb-6 bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-cyan-600">Results</h2>
+            <div id="resultsTable" class="overflow-x-auto mb-8"></div>
+            <div id="visualization" class="visualization-container"></div>
+        </div>
+    </div>
+
+    <script>
+        async function generateQuery() {
+            const queryInput = document.getElementById('queryInput');
+            const sqlQuery = document.getElementById('sqlQuery');
+            const queryExplanation = document.getElementById('queryExplanation');
+            const resultsTable = document.getElementById('resultsTable');
+            const visualization = document.getElementById('visualization');
+
+            // Add loading states
+            sqlQuery.textContent = 'Generating query...';
+            queryExplanation.textContent = 'Analyzing...';
+            resultsTable.innerHTML = '<div class="text-center py-4">Processing results...</div>';
+            visualization.innerHTML = '<div class="text-center py-4">Preparing visualization...</div>';
+
+            try {
+                const response = await fetch('/api/generate', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ query: queryInput.value }),
+                });
+
+                const data = await response.json();
+
+                // Display SQL query with syntax highlighting
+                sqlQuery.textContent = data.sql_query;
+
+                // Display explanation
+                queryExplanation.textContent = data.explanation;
+
+                // Display results table
+                displayResults(data.results);
+
+                // Generate visualization
+                generateVisualization(data.results);
+            } catch (error) {
+                console.error('Error:', error);
+                sqlQuery.textContent = 'Error generating query';
+                queryExplanation.textContent = 'An error occurred';
+                resultsTable.innerHTML = '<div class="text-red-500 py-4">Error processing results</div>';
+                visualization.innerHTML = '';
+            }
+        }
+
+        function displayResults(results) {
+            if (!results || results.length === 0) {
+                resultsTable.innerHTML = '<p class="text-gray-500 py-4">No results found</p>';
+                return;
+            }
+
+            const table = document.createElement('table');
+            table.className = 'results-table';
+
+            // Create header
+            const thead = document.createElement('thead');
+            const headerRow = document.createElement('tr');
+            Object.keys(results[0]).forEach(header => {
+                const th = document.createElement('th');
+                th.textContent = header.replace(/_/g, ' ').toUpperCase();
+                headerRow.appendChild(th);
+            });
+            thead.appendChild(headerRow);
+            table.appendChild(thead);
+
+            // Create body
+            const tbody = document.createElement('tbody');
+            results.forEach(row => {
+                const tr = document.createElement('tr');
+                Object.values(row).forEach(value => {
+                    const td = document.createElement('td');
+                    td.textContent = typeof value === 'number' ? value.toLocaleString() : value;
+                    tr.appendChild(td);
+                });
+                tbody.appendChild(tr);
+            });
+            table.appendChild(tbody);
+
+            resultsTable.innerHTML = '';
+            resultsTable.appendChild(table);
+        }
+
+        function generateVisualization(results) {
+            if (!results || results.length === 0) {
+                visualization.innerHTML = '<p class="text-gray-500 py-4">No data to visualize</p>';
+                return;
+            }
+
+            const numericColumns = Object.keys(results[0]).filter(key => 
+                typeof results[0][key] === 'number'
+            );
+
+            if (numericColumns.length === 0) {
+                visualization.innerHTML = '<p class="text-gray-500 py-4">No numeric data to visualize</p>';
+                return;
+            }
+
+            const data = [{
+                x: results.map(row => Object.values(row)[0]),  // First column as labels
+                y: results.map(row => row[numericColumns[0]]), // First numeric column as values
+                type: 'bar',
+                marker: {
+                    color: results.map((_, i) => `rgba(79, 70, 229, ${1 - i * 0.15})`),
+                }
+            }];
+
+            const layout = {
+                title: {
+                    text: 'Data Visualization',
+                    font: {
+                        family: 'Inter',
+                        size: 24,
+                        color: '#1F2937'
+                    }
+                },
+                font: {
+                    family: 'Inter'
+                },
+                height: 400,
+                margin: { t: 40, r: 20, l: 40, b: 40 },
+                paper_bgcolor: 'rgba(0,0,0,0)',
+                plot_bgcolor: 'rgba(0,0,0,0)',
+                xaxis: {
+                    tickangle: -45,
+                    gridcolor: '#E5E7EB'
+                },
+                yaxis: {
+                    gridcolor: '#E5E7EB'
+                }
+            };
+
+            const config = {
+                responsive: true,
+                displayModeBar: false
+            };
+
+            Plotly.newPlot('visualization', data, layout, config);
+        }
+    </script>
+</body>
+</html> 
